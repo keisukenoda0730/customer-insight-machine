@@ -62,50 +62,55 @@ def collect_results(
     all_results: List[Dict] = []
     api_call_count = 0
 
-    search_kwargs: Dict = {
+    base_kwargs: Dict = {
         "max_results": min(base_num, 20),
         "search_depth": "advanced",
         "include_raw_content": True,
     }
-    if include_domains:
-        search_kwargs["include_domains"] = include_domains
+
+    # 複数ドメイン指定時はドメインごとに個別検索して均等取得
+    domain_targets = include_domains if include_domains else [None]
 
     for query in queries:
-        try:
-            response = client.search(query=query, **search_kwargs)
-            api_call_count += 1
-        except Exception as e:
-            raise RuntimeError(f"Tavily API エラー: {e}") from e
+        for domain in domain_targets:
+            search_kwargs = dict(base_kwargs)
+            if domain:
+                search_kwargs["include_domains"] = [domain]
+            try:
+                response = client.search(query=query, **search_kwargs)
+                api_call_count += 1
+            except Exception as e:
+                raise RuntimeError(f"Tavily API エラー: {e}") from e
 
-        for item in response.get("results", []):
-            url = item.get("url", "")
-            if not url or url in seen_urls:
-                continue
-            seen_urls.add(url)
+            for item in response.get("results", []):
+                url = item.get("url", "")
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
 
-            raw = item.get("raw_content") or ""
-            snippet = item.get("content", "")
+                raw = item.get("raw_content") or ""
+                snippet = item.get("content", "")
 
-            # raw_contentのゴミ判定 → クリーニング → 再判定
-            if raw and not _is_garbage(raw):
-                cleaned = _clean_markdown(raw)
-                if not _is_garbage(cleaned):
-                    full_text = cleaned[:max_chars] if max_chars > 0 else cleaned
-                    text_source = "フルテキスト（Tavily）"
+                # raw_contentのゴミ判定 → クリーニング → 再判定
+                if raw and not _is_garbage(raw):
+                    cleaned = _clean_markdown(raw)
+                    if not _is_garbage(cleaned):
+                        full_text = cleaned[:max_chars] if max_chars > 0 else cleaned
+                        text_source = "フルテキスト（Tavily）"
+                    else:
+                        full_text = snippet
+                        text_source = "スニペット（Tavily）"
                 else:
                     full_text = snippet
                     text_source = "スニペット（Tavily）"
-            else:
-                full_text = snippet
-                text_source = "スニペット（Tavily）"
 
-            all_results.append({
-                "query": query,
-                "title": item.get("title", ""),
-                "snippet": snippet,
-                "full_text": full_text,
-                "text_source": text_source,
-                "url": url,
-            })
+                all_results.append({
+                    "query": query,
+                    "title": item.get("title", ""),
+                    "snippet": snippet,
+                    "full_text": full_text,
+                    "text_source": text_source,
+                    "url": url,
+                })
 
     return all_results, api_call_count

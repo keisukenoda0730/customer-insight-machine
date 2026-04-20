@@ -250,7 +250,12 @@ with col_chars:
 
 if keyword:
     query_count = 1 + (len(negative_words) if deep_mode else 0)
-    st.info(f"📡 このリサーチのAPI消費目安: **{query_count} 回** （{query_count} クエリ × 1リクエスト）")
+    domain_count = max(1, len(include_domains))
+    estimated_calls = query_count * domain_count
+    st.info(
+        f"📡 このリサーチのAPI消費目安: **{estimated_calls} 回** "
+        f"（{query_count} クエリ × {domain_count} サイト）"
+    )
 
 st.divider()
 
