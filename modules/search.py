@@ -1,9 +1,9 @@
+import re
 from tavily import TavilyClient
 from typing import List, Dict, Tuple, Optional
 
 DEFAULT_NEGATIVE_WORDS = ["辛い", "失敗", "限界", "相談", "やめたい"]
 
-# これらが含まれる・または短すぎる本文はゴミとみなしてsnippetを使う
 _GARBAGE_PATTERNS = [
     "JavaScriptが無効",
     "JavaScriptを有効",
@@ -11,13 +11,31 @@ _GARBAGE_PATTERNS = [
     "このページを表示するにはJavaScript",
     "ブラウザの設定でJavaScript",
 ]
-_MIN_CONTENT_LENGTH = 80
+_MIN_PLAIN_LENGTH = 150
+
+
+def _clean_markdown(text: str) -> str:
+    """マークダウン記法を除去してプレーンテキストにする"""
+    text = re.sub(r'!\[.*?\]\(.*?\)', '', text)           # 画像を除去
+    text = re.sub(r'\[([^\]]*)\]\([^\)]*\)', r'\1', text) # リンクをテキストのみに
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)  # 見出し記号を除去
+    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)  # 太字・斜体を除去
+    text = re.sub(r'\n{3,}', '\n\n', text)                 # 連続空行を圧縮
+    return text.strip()
 
 
 def _is_garbage(text: str) -> bool:
-    if not text or len(text.strip()) < _MIN_CONTENT_LENGTH:
+    """本文としての価値がないコンテンツかを判定する"""
+    if not text or len(text.strip()) < 50:
         return True
-    return any(p in text for p in _GARBAGE_PATTERNS)
+    if any(p in text for p in _GARBAGE_PATTERNS):
+        return True
+    # マークダウン除去後のプレーンテキストが少ない＝ナビゲーションリンクの羅列
+    cleaned = re.sub(r'\[([^\]]*)\]\([^\)]*\)', r'\1', text)
+    cleaned = re.sub(r'!\[.*?\]\(.*?\)', '', cleaned)
+    if len(cleaned.strip()) < _MIN_PLAIN_LENGTH:
+        return True
+    return False
 
 
 def build_queries(keyword: str, negative_words: List[str], deep_mode: bool) -> List[str]:
@@ -68,9 +86,15 @@ def collect_results(
             raw = item.get("raw_content") or ""
             snippet = item.get("content", "")
 
+            # raw_contentのゴミ判定 → クリーニング → 再判定
             if raw and not _is_garbage(raw):
-                full_text = raw[:max_chars] if max_chars > 0 else raw
-                text_source = "フルテキスト（Tavily）"
+                cleaned = _clean_markdown(raw)
+                if not _is_garbage(cleaned):
+                    full_text = cleaned[:max_chars] if max_chars > 0 else cleaned
+                    text_source = "フルテキスト（Tavily）"
+                else:
+                    full_text = snippet
+                    text_source = "スニペット（Tavily）"
             else:
                 full_text = snippet
                 text_source = "スニペット（Tavily）"
