@@ -3,6 +3,22 @@ from typing import List, Dict, Tuple, Optional
 
 DEFAULT_NEGATIVE_WORDS = ["辛い", "失敗", "限界", "相談", "やめたい"]
 
+# これらが含まれる・または短すぎる本文はゴミとみなしてsnippetを使う
+_GARBAGE_PATTERNS = [
+    "JavaScriptが無効",
+    "JavaScriptを有効",
+    "JavaScript is disabled",
+    "このページを表示するにはJavaScript",
+    "ブラウザの設定でJavaScript",
+]
+_MIN_CONTENT_LENGTH = 80
+
+
+def _is_garbage(text: str) -> bool:
+    if not text or len(text.strip()) < _MIN_CONTENT_LENGTH:
+        return True
+    return any(p in text for p in _GARBAGE_PATTERNS)
+
 
 def build_queries(keyword: str, negative_words: List[str], deep_mode: bool) -> List[str]:
     queries = [keyword]
@@ -52,7 +68,7 @@ def collect_results(
             raw = item.get("raw_content") or ""
             snippet = item.get("content", "")
 
-            if raw:
+            if raw and not _is_garbage(raw):
                 full_text = raw[:max_chars] if max_chars > 0 else raw
                 text_source = "フルテキスト（Tavily）"
             else:

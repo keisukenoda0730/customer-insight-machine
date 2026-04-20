@@ -295,7 +295,7 @@ if results:
             }
             for r in results
         ])
-        st.dataframe(df_display, use_container_width=True, height=400)
+        st.dataframe(df_display, use_container_width=True)
         source_counts = df_display["取得方法"].value_counts()
         st.caption("取得内訳: " + "　".join(f"**{k}** {v}件" for k, v in source_counts.items()))
 
